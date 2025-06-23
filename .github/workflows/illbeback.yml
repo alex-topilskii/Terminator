@@ -100,4 +100,4 @@ jobs:
 
       - name: Final message
         run: |
-          echo "🤖 I'll be back in 2 weeks."
+          echo "🤖 I'll be back in 2 weeks 👍"
