@@ -2,28 +2,33 @@ name: Close Jira Sprint (Every 2nd Friday)
 
 on:
   schedule:
-    - cron: '0 14 * * 5'  # Каждую пятницу в 10:00 UTC
+    - cron: '0 14 * * 5'  # Каждый пятничный запуск в 14:00 UTC (17:00 МСК)
   workflow_dispatch:
 
 jobs:
   close-sprint:
     runs-on: ubuntu-latest
+    if: ${{ secrets.RUN_CLOSE_SPRINT == 'true' }}
 
     steps:
       - name: Install jq
-        run: sudo apt-get install -y jq
+        run: |
+          echo "🔧 Installing jq for JSON processing..."
+          sudo apt-get update
+          sudo apt-get install -y jq
+          echo "✅ jq installed."
 
-      - name: Check if it is an even week number
+      - name: Check current date and week number
         id: week-check
         run: |
-          week_number=$(date +%U)  # номер недели в году (начиная с воскресенья)
-          echo "📅 Week number: $week_number"
-          
+          echo "📅 Current date and time: $(date)"
+          week_number=$(date +%U)
+          echo "📅 Current week number (Sunday-start): $week_number"
           if (( week_number % 2 == 0 )); then
-            echo "✅ Even week, proceeding with sprint closure"
+            echo "✅ Week is even, proceeding with sprint closure"
             echo "run=true" >> $GITHUB_OUTPUT
           else
-            echo "⏭️ Odd week, skipping sprint closure"
+            echo "⏭️ Week is odd, skipping sprint closure"
             echo "run=false" >> $GITHUB_OUTPUT
           fi
 
@@ -31,27 +36,59 @@ jobs:
         if: steps.week-check.outputs.run == 'true'
         id: get-sprint
         run: |
-          response=$(curl -s -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
+          echo "🔍 Fetching active sprint from board ID ${{ secrets.JIRA_BOARD_ID }}..."
+          response=$(curl -s -w "\n%{http_code}" -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
             "https://${{ secrets.JIRA_DOMAIN }}/rest/agile/1.0/board/${{ secrets.JIRA_BOARD_ID }}/sprint?state=active")
 
-          echo "📥 Response: $response"
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
 
-          sprint_id=$(echo "$response" | jq '.values[0].id // empty')
+          echo "📝 HTTP response code: $http_code"
+          if [ "$http_code" != "200" ]; then
+            echo "❌ Failed to fetch active sprint. Response body:"
+            echo "$body"
+            echo "sprint_id=" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          sprint_id=$(echo "$body" | jq -r '.values[0].id // empty')
 
           if [ -z "$sprint_id" ]; then
-            echo "❌ No active sprint found"
+            echo "⚠️ No active sprint found on board."
             echo "sprint_id=" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          echo "✅ Active sprint ID: $sprint_id"
+          sprint_name=$(echo "$body" | jq -r '.values[0].name // empty')
+          echo "✅ Active sprint found: ID=$sprint_id, Name=\"$sprint_name\""
           echo "sprint_id=$sprint_id" >> $GITHUB_OUTPUT
 
       - name: Close active sprint
         if: steps.get-sprint.outputs.sprint_id != ''
         run: |
-          curl --request PUT \
-            --url "https://${{ secrets.JIRA_DOMAIN }}/rest/agile/1.0/sprint/${{ steps.get-sprint.outputs.sprint_id }}" \
+          sprint_id=${{ steps.get-sprint.outputs.sprint_id }}
+          echo "🚪 Closing sprint ID $sprint_id..."
+          timestamp=$(date +"%Y-%m-%d %H:%M:%S %Z")
+          echo "⏰ Closing time: $timestamp"
+
+          response=$(curl -s -w "\n%{http_code}" --request PUT \
+            --url "https://${{ secrets.JIRA_DOMAIN }}/rest/agile/1.0/sprint/$sprint_id" \
             --user "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
             --header "Content-Type: application/json" \
-            --data '{"state":"closed"}'
+            --data '{"state":"closed"}')
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "📝 HTTP response code: $http_code"
+          if [ "$http_code" = "204" ] || [ "$http_code" = "200" ]; then
+            echo "✅ Sprint $sprint_id successfully closed."
+          else
+            echo "❌ Failed to close sprint. Response body:"
+            echo "$body"
+            exit 1
+          fi
+
+      - name: Final message
+        run: |
+          echo "🤖 I'll be back in 2 weeks"
