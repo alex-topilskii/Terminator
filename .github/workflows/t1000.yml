@@ -13,9 +13,9 @@ jobs:
       - name: Check if sprint closure is enabled
         id: check-enabled
         run: |
-          echo "🔧 RUN_CLOSE_SPRINT is set to: '${{ secrets.RUN_CLOSE_SPRINT }}'"
-          if [ "${{ secrets.RUN_CLOSE_SPRINT }}" != "true" ]; then
-            echo "❌ Sprint closure is disabled via secret RUN_CLOSE_SPRINT. Exiting workflow."
+          echo "🔧 RUN_CLOSE_SPRINT is set to: '${{ vars.RUN_CLOSE_SPRINT }}'"
+          if [ "${{ vars.RUN_CLOSE_SPRINT }}" != "true" ]; then
+            echo "❌ Sprint closure is disabled via RUN_CLOSE_SPRINT variable. Exiting workflow."
             exit 0
           fi
           echo "✅ Sprint closure is enabled. Continuing..."
@@ -33,12 +33,12 @@ jobs:
           echo "📅 Current date and time: $(date)"
           week_number=$(date +%U)
           echo "📅 Current week number: $week_number"
-          
+
           current_parity=$(( 2 - (week_number % 2) ))
           echo "🔢 Computed parity: $current_parity"
-          echo "🔧 Expected parity: ${{ secrets.WEEK_PARITY }}"
-          
-          if [ "$current_parity" -eq "${{ secrets.WEEK_PARITY }}" ]; then
+          echo "🔧 Expected parity: ${{ vars.WEEK_PARITY }}"
+
+          if [ "$current_parity" -eq "${{ vars.WEEK_PARITY }}" ]; then
             echo "✅ Week parity matches. Proceeding..."
             echo "run=true" >> $GITHUB_OUTPUT
           else
@@ -50,9 +50,9 @@ jobs:
         if: steps.week-check.outputs.run == 'true'
         id: get-sprint
         run: |
-          echo "🔍 Fetching active sprint from board ID ${{ secrets.JIRA_BOARD_ID }}..."
-          response=$(curl -s -w "\n%{http_code}" -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
-            "https://${{ secrets.JIRA_DOMAIN }}/rest/agile/1.0/board/${{ secrets.JIRA_BOARD_ID }}/sprint?state=active")
+          echo "🔍 Fetching active sprint from board ID ${{ vars.JIRA_BOARD_ID }}..."
+          response=$(curl -s -w "\n%{http_code}" -u "${{ vars.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
+            "https://${{ vars.JIRA_DOMAIN }}/rest/agile/1.0/board/${{ vars.JIRA_BOARD_ID }}/sprint?state=active")
 
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | sed '$d')
@@ -85,7 +85,36 @@ jobs:
         run: |
           sprint_id="${{ steps.get-sprint.outputs.sprint_id }}"
           sprint_name="${{ steps.get-sprint.outputs.sprint_name }}"
-          echo "🚫 [DRY-RUN] Would close sprint ID $sprint_id (\"$sprint_name\") now."
+
+          echo "📥 Fetching sprint details for ID $sprint_id..."
+          response=$(curl -s -w "\n%{http_code}" -u "${{ vars.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
+            "https://${{ vars.JIRA_DOMAIN }}/rest/agile/1.0/sprint/$sprint_id")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          if [ "$http_code" != "200" ]; then
+            echo "❌ Failed to fetch sprint details."
+            echo "$body"
+            exit 1
+          fi
+
+          name=$(echo "$body" | jq -r '.name // empty')
+          start_date=$(echo "$body" | jq -r '.startDate // empty')
+          end_date=$(echo "$body" | jq -r '.endDate // empty')
+          goal=$(echo "$body" | jq -r '.goal // empty')
+
+          if [ -z "$name" ] || [ -z "$start_date" ] || [ -z "$end_date" ]; then
+            echo "❌ Missing required fields: name, startDate, or endDate."
+            exit 1
+          fi
+
+          echo "🚫 [DRY-RUN] Would close sprint:"
+          echo "   🏷️ Name      : $name"
+          echo "   📅 StartDate : $start_date"
+          echo "   📅 EndDate   : $end_date"
+          echo "   🎯 Goal      : $goal"
+          echo "   🆔 ID        : $sprint_id"
           echo "ℹ️ This is a simulation. Sprint is not actually closed."
 
       - name: Final message
