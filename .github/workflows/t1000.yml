@@ -1,4 +1,4 @@
-name: Close Jira Sprint (Test Mode)
+name: T-800-Sandbox
 
 on:
   schedule:
@@ -8,9 +8,18 @@ on:
 jobs:
   close-sprint:
     runs-on: ubuntu-latest
-    if: ${{ secrets.RUN_CLOSE_SPRINT == 'true' }}
 
     steps:
+      - name: Check if sprint closure is enabled
+        id: check-enabled
+        run: |
+          echo "🔧 RUN_CLOSE_SPRINT is set to: '${{ secrets.RUN_CLOSE_SPRINT }}'"
+          if [ "${{ secrets.RUN_CLOSE_SPRINT }}" != "true" ]; then
+            echo "❌ Sprint closure is disabled via secret RUN_CLOSE_SPRINT. Exiting workflow."
+            exit 0
+          fi
+          echo "✅ Sprint closure is enabled. Continuing..."
+
       - name: Install jq
         run: |
           echo "🔧 Installing jq for JSON processing..."
@@ -24,11 +33,11 @@ jobs:
           echo "📅 Current date and time: $(date)"
           week_number=$(date +%U)
           echo "📅 Current week number: $week_number"
-  
+          
           current_parity=$(( 2 - (week_number % 2) ))
           echo "🔢 Computed parity: $current_parity"
           echo "🔧 Expected parity: ${{ secrets.WEEK_PARITY }}"
-  
+          
           if [ "$current_parity" -eq "${{ secrets.WEEK_PARITY }}" ]; then
             echo "✅ Week parity matches. Proceeding..."
             echo "run=true" >> $GITHUB_OUTPUT

@@ -1,4 +1,4 @@
-name: Close Jira Sprint
+name: Hasta-La-Vista-Sprint
 
 on:
   schedule:
