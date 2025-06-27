@@ -2,7 +2,7 @@ name: Hasta-La-Vista-Sprint
 
 on:
   schedule:
-    - cron: '0 17 * * 5'  # Каждую пятницу в 14:00 UTC (17:00 МСК)
+    - cron: '0 17 * * 5'  # Каждую пятницу в 17:00 МСК (14:00 UTC)
   workflow_dispatch:
 
 jobs:
@@ -62,48 +62,79 @@ jobs:
             echo "❌ Failed to fetch active sprint. Response body:"
             echo "$body"
             echo "sprint_id=" >> $GITHUB_OUTPUT
-            echo "sprint_name=" >> $GITHUB_OUTPUT
             exit 1
           fi
 
           sprint_id=$(echo "$body" | jq -r '.values[0].id // empty')
-          sprint_name=$(echo "$body" | jq -r '.values[0].name // empty')
 
-          if [ -z "$sprint_id" ] || [ -z "$sprint_name" ]; then
+          if [ -z "$sprint_id" ]; then
             echo "⚠️ No active sprint found on board."
             echo "sprint_id=" >> $GITHUB_OUTPUT
-            echo "sprint_name=" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          echo "✅ Active sprint found: ID=$sprint_id, Name=\"$sprint_name\""
+          echo "✅ Active sprint ID: $sprint_id"
           echo "sprint_id=$sprint_id" >> $GITHUB_OUTPUT
-          echo "sprint_name=$sprint_name" >> $GITHUB_OUTPUT
 
       - name: Close active sprint
         if: steps.get-sprint.outputs.sprint_id != ''
         run: |
           sprint_id="${{ steps.get-sprint.outputs.sprint_id }}"
-          sprint_name="${{ steps.get-sprint.outputs.sprint_name }}"
-          echo "🚪 Closing sprint ID $sprint_id (\"$sprint_name\")..."
-          timestamp=$(date +"%Y-%m-%d %H:%M:%S %Z")
-          echo "⏰ Closing time: $timestamp"
+          echo "📥 Fetching sprint details for ID $sprint_id..."
 
-          response=$(curl -s -w "\n%{http_code}" --request PUT \
-            --url "https://${{ secrets.JIRA_DOMAIN }}/rest/agile/1.0/sprint/$sprint_id" \
-            --user "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
-            --header "Content-Type: application/json" \
-            --data '{"state":"closed", "name":"'"$sprint_name"'"}')
+          response=$(curl -s -w "\n%{http_code}" -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
+            "https://${{ secrets.JIRA_DOMAIN }}/rest/agile/1.0/sprint/$sprint_id")
 
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | sed '$d')
 
-          echo "📝 HTTP response code: $http_code"
-          if [ "$http_code" = "204" ] || [ "$http_code" = "200" ]; then
-            echo "✅ Sprint $sprint_id successfully closed."
-          else
-            echo "❌ Failed to close sprint. Response body:"
+          echo "📝 Sprint details HTTP code: $http_code"
+          if [ "$http_code" != "200" ]; then
+            echo "❌ Failed to fetch sprint details."
             echo "$body"
+            exit 1
+          fi
+
+          name=$(echo "$body" | jq -r '.name // empty')
+          start_date=$(echo "$body" | jq -r '.startDate // empty')
+          end_date=$(echo "$body" | jq -r '.endDate // empty')
+          goal=$(echo "$body" | jq -r '.goal // empty')
+
+          if [ -z "$name" ] || [ -z "$start_date" ] || [ -z "$end_date" ]; then
+            echo "❌ Missing required fields: name, startDate, or endDate."
+            exit 1
+          fi
+
+          echo "✅ Got sprint data:"
+          echo "   🏷️ Name      : $name"
+          echo "   📅 StartDate : $start_date"
+          echo "   📅 EndDate   : $end_date"
+          echo "   🎯 Goal      : $goal"
+
+          echo "🚪 Closing sprint ID $sprint_id..."
+          close_response=$(curl -s -w "\n%{http_code}" --request PUT \
+            --url "https://${{ secrets.JIRA_DOMAIN }}/rest/agile/1.0/sprint/$sprint_id" \
+            --user "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
+            --header "Content-Type: application/json" \
+            --data "$(jq -n \
+              --arg name "$name" \
+              --arg startDate "$start_date" \
+              --arg endDate "$end_date" \
+              --arg goal "$goal" \
+              '{name: $name, startDate: $startDate, endDate: $endDate, goal: $goal, state: "closed"}'
+            )")
+
+          close_http=$(echo "$close_response" | tail -n1)
+          close_body=$(echo "$close_response" | sed '$d')
+
+          echo "📝 Close response HTTP code: $close_http"
+          if [ "$close_http" = "200" ] || [ "$close_http" = "204" ]; then
+            echo "✅🎯😎 Sprint terminated successfully:"
+            echo "   🏷️ $name"
+            echo "   📆 $start_date → $end_date"
+          else
+            echo "❌ Failed to close sprint. Sarah Connor Response:"
+            echo "$close_body"
             exit 1
           fi
 
