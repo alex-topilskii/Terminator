@@ -33,11 +33,11 @@ jobs:
           echo "📅 Current date and time: $(date)"
           week_number=$(date +%U)
           echo "📅 Current week number: $week_number"
-  
+
           current_parity=$(( 2 - (week_number % 2) ))
           echo "🔢 Computed parity: $current_parity"
           echo "🔧 Expected parity: ${{ secrets.WEEK_PARITY }}"
-  
+
           if [ "$current_parity" -eq "${{ secrets.WEEK_PARITY }}" ]; then
             echo "✅ Week parity matches. Proceeding..."
             echo "run=true" >> $GITHUB_OUTPUT
@@ -46,7 +46,7 @@ jobs:
             echo "run=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Get active sprint ID
+      - name: Get active sprint ID and name
         if: steps.week-check.outputs.run == 'true'
         id: get-sprint
         run: |
@@ -62,26 +62,30 @@ jobs:
             echo "❌ Failed to fetch active sprint. Response body:"
             echo "$body"
             echo "sprint_id=" >> $GITHUB_OUTPUT
+            echo "sprint_name=" >> $GITHUB_OUTPUT
             exit 1
           fi
 
           sprint_id=$(echo "$body" | jq -r '.values[0].id // empty')
+          sprint_name=$(echo "$body" | jq -r '.values[0].name // empty')
 
-          if [ -z "$sprint_id" ]; then
+          if [ -z "$sprint_id" ] || [ -z "$sprint_name" ]; then
             echo "⚠️ No active sprint found on board."
             echo "sprint_id=" >> $GITHUB_OUTPUT
+            echo "sprint_name=" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          sprint_name=$(echo "$body" | jq -r '.values[0].name // empty')
           echo "✅ Active sprint found: ID=$sprint_id, Name=\"$sprint_name\""
           echo "sprint_id=$sprint_id" >> $GITHUB_OUTPUT
+          echo "sprint_name=$sprint_name" >> $GITHUB_OUTPUT
 
       - name: Close active sprint
         if: steps.get-sprint.outputs.sprint_id != ''
         run: |
-          sprint_id=${{ steps.get-sprint.outputs.sprint_id }}
-          echo "🚪 Closing sprint ID $sprint_id..."
+          sprint_id="${{ steps.get-sprint.outputs.sprint_id }}"
+          sprint_name="${{ steps.get-sprint.outputs.sprint_name }}"
+          echo "🚪 Closing sprint ID $sprint_id (\"$sprint_name\")..."
           timestamp=$(date +"%Y-%m-%d %H:%M:%S %Z")
           echo "⏰ Closing time: $timestamp"
 
@@ -89,7 +93,7 @@ jobs:
             --url "https://${{ secrets.JIRA_DOMAIN }}/rest/agile/1.0/sprint/$sprint_id" \
             --user "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
             --header "Content-Type: application/json" \
-            --data '{"state":"closed"}')
+            --data '{"state":"closed", "name":"'"$sprint_name"'"}')
 
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | sed '$d')
