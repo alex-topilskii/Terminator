@@ -14,13 +14,11 @@ jobs:
         id: check-enabled
         run: |
           echo "🔧 RUN_CLOSE_SPRINT is set to: '${{ vars.RUN_CLOSE_SPRINT }}'"
-           if [ "${{ vars.RUN_CLOSE_SPRINT }}" != "true" ]; then
+          if [ "${{ vars.RUN_CLOSE_SPRINT }}" != "true" ]; then
             echo "❌ Sprint closure is disabled via RUN_CLOSE_SPRINT variable. Exiting workflow."
-            echo "run=false" >> $GITHUB_OUTPUT
-          else 
-            echo "✅ Sprint closure is enabled. Continuing..."
-            echo "run=true" >> $GITHUB_OUTPUT
+            exit 1
           fi
+          echo "✅ Sprint closure is enabled. Continuing..."
 
       - name: Install jq
         run: |
