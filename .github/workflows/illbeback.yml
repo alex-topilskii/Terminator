@@ -2,15 +2,24 @@ name: Close Jira Sprint (Every 2nd Friday)
 
 on:
   schedule:
-    - cron: '0 14 * * 5'  # Каждый пятничный запуск в 14:00 UTC (17:00 МСК)
+    - cron: '0 14 * * 5'  # Каждую пятницу в 14:00 UTC (17:00 МСК)
   workflow_dispatch:
 
 jobs:
   close-sprint:
     runs-on: ubuntu-latest
-    if: ${{ secrets.RUN_CLOSE_SPRINT == 'true' }}
 
     steps:
+      - name: Check if sprint closure is enabled
+        id: check-enabled
+        run: |
+          echo "🔧 RUN_CLOSE_SPRINT is set to: '${{ secrets.RUN_CLOSE_SPRINT }}'"
+          if [ "${{ secrets.RUN_CLOSE_SPRINT }}" != "true" ]; then
+            echo "❌ Sprint closure is disabled via secret RUN_CLOSE_SPRINT. Exiting workflow."
+            exit 0
+          fi
+          echo "✅ Sprint closure is enabled. Continuing..."
+
       - name: Install jq
         run: |
           echo "🔧 Installing jq for JSON processing..."
