@@ -68,32 +68,13 @@ jobs:
           echo "✅ Active sprint found: ID=$sprint_id, Name=\"$sprint_name\""
           echo "sprint_id=$sprint_id" >> $GITHUB_OUTPUT
 
-      - name: Close active sprint
+      - name: Simulate closing sprint (dry-run)
         if: steps.get-sprint.outputs.sprint_id != ''
         run: |
           sprint_id=${{ steps.get-sprint.outputs.sprint_id }}
-          echo "🚪 Closing sprint ID $sprint_id..."
-          timestamp=$(date +"%Y-%m-%d %H:%M:%S %Z")
-          echo "⏰ Closing time: $timestamp"
-
-          response=$(curl -s -w "\n%{http_code}" --request PUT \
-            --url "https://${{ secrets.JIRA_DOMAIN }}/rest/agile/1.0/sprint/$sprint_id" \
-            --user "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
-            --header "Content-Type: application/json" \
-            --data '{"state":"closed"}')
-
-          http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
-
-          echo "📝 HTTP response code: $http_code"
-          if [ "$http_code" = "204" ] || [ "$http_code" = "200" ]; then
-            echo "✅ Sprint $sprint_id successfully closed."
-          else
-            echo "❌ Failed to close sprint. Response body:"
-            echo "$body"
-            exit 1
-          fi
+          echo "🚫 [DRY-RUN] Would close sprint ID $sprint_id now."
+          echo "ℹ️ This is a simulation. Sprint is not actually closed."
 
       - name: Final message
         run: |
-          echo "🤖 I'll be back in 2 weeks 👍"
+          echo "🤖 Simulation complete. No changes were made."
