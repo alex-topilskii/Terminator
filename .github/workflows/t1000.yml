@@ -1,4 +1,4 @@
-name: Close Jira Sprint (Every 2nd Friday)
+name: Close Jira Sprint (Test Mode)
 
 on:
   schedule:
