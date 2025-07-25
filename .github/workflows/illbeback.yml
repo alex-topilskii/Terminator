@@ -2,7 +2,7 @@ name: Hasta-La-Vista-Sprint
 
 on:
   schedule:
-    - cron: '0 17 * * 5'  # Каждую пятницу в 17:00 МСК (14:00 UTC)
+    - cron: '0 20 * * 5'  # Каждую пятницу в 17:00 МСК (14:00 UTC)
   workflow_dispatch:
 
 jobs:
