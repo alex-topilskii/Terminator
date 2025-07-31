@@ -44,6 +44,7 @@ jobs:
           else
             echo "⏭️ Week parity does not match. Skipping..."
             echo "run=false" >> $GITHUB_OUTPUT
+            exit 1
           fi
 
       - name: Get active sprint ID and name
