@@ -47,7 +47,7 @@ GitHub Actions workflow для **автоматического закрытия
 - `JIRA_EMAIL` — email пользователя Jira для API.
 
 ### Секреты (`secrets`)
-- `JIRA_API_TOKEN` — токен доступа к Jira API.
+- `JIRA_API_TOKEN` — токен доступа к Jira API. (у токена/юзера должны быть права на закрытие)
 
 ---
 
