@@ -1,144 +1,91 @@
-name: Hasta-La-Vista-Sprint
+# Hasta-La-Vista-Sprint 🤖
 
-on:
-  schedule:
-    - cron: '0 17 * * 5'  # Каждую пятницу в 20:00 МСК (17+3msk:00 UTC)
-  workflow_dispatch:
+GitHub Actions workflow для **автоматического закрытия спринта в Jira**.  
+Запускается по расписанию или вручную, проверяет условия, находит активный спринт и закрывает его.
 
-jobs:
-  close-sprint:
-    runs-on: ubuntu-latest
+---
 
-    steps:
-      - name: Check if sprint closure is enabled
-        id: check-enabled
-        run: |
-          echo "🔧 RUN_CLOSE_SPRINT is set to: '${{ vars.RUN_CLOSE_SPRINT }}'"
-          if [ "${{ vars.RUN_CLOSE_SPRINT }}" != "true" ]; then
-            echo "❌ Sprint closure is disabled via RUN_CLOSE_SPRINT variable. Exiting workflow."
-            exit 1
-          fi
-          echo "✅ Sprint closure is enabled. Continuing..."
+## ⚙️ Как работает
 
-      - name: Install jq
-        run: |
-          echo "🔧 Installing jq for JSON processing..."
-          sudo apt-get update
-          sudo apt-get install -y jq
-          echo "✅ jq installed."
+1. **Запуск**  
+   - Автоматически каждую **пятницу в 20:00 по МСК** (17:00 UTC).  
+   - Вручную через `workflow_dispatch`.
 
-      - name: Check current date and week number
-        id: week-check
-        run: |
-          echo "📅 Current date and time: $(date)"
-          week_number=$(date +%U)
-          echo "📅 Current week number: $week_number"
+2. **Проверка включения**  
+   Перед запуском проверяется переменная `RUN_CLOSE_SPRINT`.  
+   - Если она не равна `"true"`, workflow завершится.
 
-          current_parity=$(( 2 - (week_number % 2) ))
-          echo "🔢 Computed parity: $current_parity"
-          echo "🔧 Expected parity: ${{ vars.WEEK_PARITY }}"
+3. **Определение недели**  
+   - Вычисляется номер текущей недели и её чётность.  
+   - Сравнивается с переменной `WEEK_PARITY`.  
+   - Если чётность совпадает — продолжаем выполнение, иначе процесс останавливается.
 
-          if [ "$current_parity" -eq "${{ vars.WEEK_PARITY }}" ]; then
-            echo "✅ Week parity matches. Proceeding..."
-            echo "run=true" >> $GITHUB_OUTPUT
-          else
-            echo "⏭️ Week parity does not match. Skipping..."
-            echo "run=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
+4. **Получение спринта**  
+   - Из Jira по `BOARD_ID` запрашивается активный спринт.  
+   - Если спринта нет — завершаем выполнение.
 
-      - name: Get active sprint ID and name
-        if: steps.week-check.outputs.run == 'true'
-        id: get-sprint
-        run: |
-          echo "🔍 Fetching active sprint from board ID ${{ vars.JIRA_BOARD_ID }}..."
-          response=$(curl -s -w "\n%{http_code}" -u "${{ vars.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
-            "https://${{ vars.JIRA_DOMAIN }}/rest/agile/1.0/board/${{ vars.JIRA_BOARD_ID }}/sprint?state=active")
+5. **Закрытие спринта**  
+   - Получаем данные спринта (название, даты, цель).  
+   - Отправляем PUT-запрос в Jira для перевода состояния в `closed`.  
+   - В случае успеха выводим информацию о завершённом спринте.
 
-          http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
+6. **Финальное сообщение**  
+   - После успешного завершения появляется сообщение:  
+     ```
+     🤖 I'll be back in 2 weeks 👍
+     ```
 
-          echo "📝 HTTP response code: $http_code"
-          if [ "$http_code" != "200" ]; then
-            echo "❌ Failed to fetch active sprint. Response body:"
-            echo "$body"
-            echo "sprint_id=" >> $GITHUB_OUTPUT
-            exit 1
-          fi
+---
 
-          sprint_id=$(echo "$body" | jq -r '.values[0].id // empty')
+## 🔑 Переменные и секреты
 
-          if [ -z "$sprint_id" ]; then
-            echo "⚠️ No active sprint found on board."
-            echo "sprint_id=" >> $GITHUB_OUTPUT
-            exit 0
-          fi
+### Переменные (`vars`)
+- `RUN_CLOSE_SPRINT` — включает/отключает закрытие (`true` / `false`).
+- `WEEK_PARITY` — ожидаемая чётность недели (`1` или `2`).
+- `JIRA_BOARD_ID` — ID доски Jira.
+- `JIRA_DOMAIN` — домен вашей Jira (`example.atlassian.net`).
+- `JIRA_EMAIL` — email пользователя Jira для API.
 
-          echo "✅ Active sprint ID: $sprint_id"
-          echo "sprint_id=$sprint_id" >> $GITHUB_OUTPUT
+### Секреты (`secrets`)
+- `JIRA_API_TOKEN` — токен доступа к Jira API.
 
-      - name: Close active sprint
-        if: steps.get-sprint.outputs.sprint_id != ''
-        run: |
-          sprint_id="${{ steps.get-sprint.outputs.sprint_id }}"
-          echo "📥 Fetching sprint details for ID $sprint_id..."
+---
 
-          response=$(curl -s -w "\n%{http_code}" -u "${{ vars.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
-            "https://${{ vars.JIRA_DOMAIN }}/rest/agile/1.0/sprint/$sprint_id")
+## 🚀 Запуск вручную
 
-          http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
+1. Перейдите во вкладку **Actions** → выберите `Hasta-La-Vista-Sprint`.
+2. Нажмите **Run workflow**.
+3. Workflow выполнится, если переменные настроены правильно.
 
-          echo "📝 Sprint details HTTP code: $http_code"
-          if [ "$http_code" != "200" ]; then
-            echo "❌ Failed to fetch sprint details."
-            echo "$body"
-            exit 1
-          fi
+---
 
-          name=$(echo "$body" | jq -r '.name // empty')
-          start_date=$(echo "$body" | jq -r '.startDate // empty')
-          end_date=$(echo "$body" | jq -r '.endDate // empty')
-          goal=$(echo "$body" | jq -r '.goal // empty')
+## 📝 Логи
 
-          if [ -z "$name" ] || [ -z "$start_date" ] || [ -z "$end_date" ]; then
-            echo "❌ Missing required fields: name, startDate, or endDate."
-            exit 1
-          fi
+Workflow выводит:
+- Текущее время и номер недели.
+- Найденный активный спринт и его параметры.
+- Статус закрытия (успех или ошибка).
 
-          echo "✅ Got sprint data:"
-          echo "   🏷️ Name      : $name"
-          echo "   📅 StartDate : $start_date"
-          echo "   📅 EndDate   : $end_date"
-          echo "   🎯 Goal      : $goal"
+---
 
-          echo "🚪 Closing sprint ID $sprint_id..."
-          close_response=$(curl -s -w "\n%{http_code}" --request PUT \
-            --url "https://${{ vars.JIRA_DOMAIN }}/rest/agile/1.0/sprint/$sprint_id" \
-            --user "${{ vars.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
-            --header "Content-Type: application/json" \
-            --data "$(jq -n \
-              --arg name "$name" \
-              --arg startDate "$start_date" \
-              --arg endDate "$end_date" \
-              --arg goal "$goal" \
-              '{name: $name, startDate: $startDate, endDate: $endDate, goal: $goal, state: "closed"}'
-            )")
+## 🎯 Пример результата
 
-          close_http=$(echo "$close_response" | tail -n1)
-          close_body=$(echo "$close_response" | sed '$d')
+```
+✅🎯😎 Sprint terminated successfully:
+   🏷️ Sprint 42
+   📆 2025-05-02 → 2025-05-16
+🤖 I'll be back in 2 weeks 👍
+```
 
-          echo "📝 Close response HTTP code: $close_http"
-          if [ "$close_http" = "200" ] || [ "$close_http" = "204" ]; then
-            echo "✅🎯😎 Sprint terminated successfully:"
-            echo "   🏷️ $name"
-            echo "   📆 $start_date → $end_date"
-          else
-            echo "❌ Failed to close sprint. Response:"
-            echo "$close_body"
-            exit 1
-          fi
+---
 
-      - name: Final message
-        run: |
-          echo "🤖 I'll be back in 2 weeks 👍"
+## 📌 Зачем это нужно?
+
+- Автоматизация рутины закрытия спринтов.  
+- Минимизация человеческих ошибок.  
+- Удобный контроль и логирование процесса.  
+- Полностью интегрировано с Jira API.
+
+---
+
+Hasta la vista, sprint! 🚀  
